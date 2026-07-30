@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual Environment
+venv/
+env/
+.env
+.venv/
+
+# MLflow local artifacts (not committed — use proper artifact store)
+mlruns/
+mlflow.db
+
+# Trained model binary (regenerated via train.py)
+model/model.pkl
+
+# Data (too large for GitHub — use DVC or cloud storage)
+data/
+
+# Environment
+.python-version
+*.env
+
+# Docker
+.dockerignore
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

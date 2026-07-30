@@ -1,6 +1,8 @@
 import pandas as pd
 import mlflow
 import mlflow.sklearn
+import joblib
+import os
 
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
@@ -22,6 +24,9 @@ X_train, X_test, y_train, y_test = train_test_split(
     test_size=0.2,
     random_state=42
 )
+
+# Set MLflow Tracking Server URI (PostgreSQL backend)
+mlflow.set_tracking_uri("http://127.0.0.1:5000")
 
 # Create Experiment
 mlflow.set_experiment("House Price Prediction")
@@ -54,11 +59,16 @@ with mlflow.start_run():
     mlflow.log_metric("MSE", mse)
     mlflow.log_metric("R2", r2)
 
-    # Save Model
+    # Save Model to MLflow
     mlflow.sklearn.log_model(
         sk_model=model,
-        artifact_path="house_model"
+        name="house_model"
     )
+
+    # Save Model as pickle for FastAPI serving
+    os.makedirs("model", exist_ok=True)
+    joblib.dump(model, "model/model.pkl")
+    print("Model saved to model/model.pkl")
 
     print("Training Completed")
     print("MSE :", mse)

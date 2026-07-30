@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: houseprice-estimator
+  labels:
+    app: houseprice-estimator
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: houseprice-estimator
+  template:
+    metadata:
+      labels:
+        app: houseprice-estimator
+        version: v1
+    spec:
+      containers:
+        - name: houseprice-estimator
+          image: houseprice-estimator:v1
+          imagePullPolicy: Never        # Use local image loaded into Kind (not from DockerHub)
+          command: ["mlflow", "ui"]
+          args:
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "5000"
+            - "--backend-store-uri"
+            - "sqlite:///mlflow-data/mlflow.db"
+            - "--allowed-hosts"
+            - "*"
+          ports:
+            - containerPort: 5000
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: "sqlite:///mlflow-data/mlflow.db"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"

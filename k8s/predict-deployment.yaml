@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: houseprice-predict
+  labels:
+    app: houseprice-predict
+    version: v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: houseprice-predict
+  template:
+    metadata:
+      labels:
+        app: houseprice-predict
+        version: v2
+    spec:
+      containers:
+        - name: houseprice-predict
+          image: houseprice-estimator:v2
+          imagePullPolicy: Never        # Use local image loaded into Kind
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MODEL_PATH
+              value: "model/model.pkl"
+          # Liveness probe — restart pod if app crashes
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          # Readiness probe — only send traffic when app is ready
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
