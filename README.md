@@ -2,6 +2,10 @@
 
 A complete end-to-end **MLOps pipeline** for predicting house prices using Machine Learning, deployed on Kubernetes with a FastAPI backend and a modern web UI.
 
+## 🌐 Live Demo
+
+Open the deployed app here: https://houseprice-estimator-v5.onrender.com/
+
 ---
 
 ## 🚀 Tech Stack
