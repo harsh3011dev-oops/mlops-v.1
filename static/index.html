@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>House Price AI Estimator</title>
+    <meta name="description" content="Estimate house prices using Machine Learning. Powered by a RandomForest model trained on real estate data.">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -13,6 +14,9 @@
             --primary: #6366f1;
             --primary-hover: #4f46e5;
             --accent: #10b981;
+            --danger: #ef4444;
+            --danger-bg: rgba(239, 68, 68, 0.1);
+            --danger-border: rgba(239, 68, 68, 0.3);
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
         }
@@ -75,7 +79,7 @@
         .form-group {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 6px;
         }
 
         .form-group label {
@@ -84,7 +88,8 @@
             color: #cbd5e1;
         }
 
-        .form-group input, .form-group select {
+        .form-group input,
+        .form-group select {
             background: rgba(15, 23, 42, 0.6);
             border: 1px solid var(--card-border);
             border-radius: 12px;
@@ -95,9 +100,27 @@
             transition: all 0.2s ease;
         }
 
-        .form-group input:focus, .form-group select:focus {
+        .form-group input:focus,
+        .form-group select:focus {
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+        }
+
+        /* FIX: Visual feedback for invalid inputs */
+        .form-group input.invalid {
+            border-color: var(--danger);
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+        }
+
+        .field-error {
+            font-size: 0.75rem;
+            color: var(--danger);
+            display: none;
+            margin-top: 2px;
+        }
+
+        .field-error.visible {
+            display: block;
         }
 
         .btn-predict {
@@ -112,11 +135,41 @@
             cursor: pointer;
             transition: all 0.3s ease;
             box-shadow: 0 10px 20px -5px rgba(99, 102, 241, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
 
-        .btn-predict:hover {
+        .btn-predict:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 15px 25px -5px rgba(99, 102, 241, 0.6);
+        }
+
+        .btn-predict:disabled {
+            opacity: 0.75;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* FIX: Loading spinner for visual feedback */
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: none;
+            flex-shrink: 0;
+        }
+
+        .btn-predict.loading .spinner {
+            display: block;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         .result-card {
@@ -132,6 +185,34 @@
 
         .result-card.active {
             display: block;
+        }
+
+        /* FIX: Inline error card replaces disruptive alert() */
+        .error-card {
+            margin-top: 24px;
+            padding: 16px 20px;
+            background: var(--danger-bg);
+            border: 1px solid var(--danger-border);
+            border-radius: 16px;
+            text-align: center;
+            display: none;
+            animation: fadeIn 0.4s ease-in-out;
+        }
+
+        .error-card.active {
+            display: block;
+        }
+
+        .error-card p {
+            color: #fca5a5;
+            font-size: 0.95rem;
+        }
+
+        .error-card p strong {
+            display: block;
+            font-size: 1rem;
+            color: #f87171;
+            margin-bottom: 4px;
         }
 
         .result-title {
@@ -160,7 +241,13 @@
 
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 600px) {
+            .container { padding: 24px 16px; }
+            .header h1 { font-size: 1.6rem; }
+            .result-price { font-size: 1.9rem; }
         }
     </style>
 </head>
@@ -168,54 +255,115 @@
     <div class="container">
         <div class="header">
             <h1>🏡 House Price AI Estimator</h1>
-            <p>Powered by Machine Learning & Kubernetes Service</p>
+            <p>Powered by Machine Learning &amp; Kubernetes Service</p>
         </div>
 
-        <form id="predictionForm">
+        <!-- novalidate: we handle validation ourselves for better UX -->
+        <form id="predictionForm" novalidate>
             <div class="grid">
                 <div class="form-group">
                     <label for="LotArea">Lot Area (sq ft)</label>
-                    <input type="number" id="LotArea" value="8450" required>
+                    <!-- FIX: Added min="1" — negative/zero lot size is invalid -->
+                    <input type="number" id="LotArea" value="8450" min="1" required>
+                    <span class="field-error" id="LotArea-err">Must be a positive number (≥ 1 sq ft)</span>
                 </div>
                 <div class="form-group">
                     <label for="OverallQual">Overall Quality (1-10)</label>
                     <input type="number" id="OverallQual" min="1" max="10" value="7" required>
+                    <span class="field-error" id="OverallQual-err">Must be between 1 and 10</span>
                 </div>
                 <div class="form-group">
                     <label for="OverallCond">Overall Condition (1-10)</label>
                     <input type="number" id="OverallCond" min="1" max="10" value="5" required>
+                    <span class="field-error" id="OverallCond-err">Must be between 1 and 10</span>
                 </div>
                 <div class="form-group">
                     <label for="YearBuilt">Year Built</label>
-                    <input type="number" id="YearBuilt" value="2003" required>
+                    <!-- FIX: Added min/max bounds — no unbounded year values -->
+                    <input type="number" id="YearBuilt" value="2003" min="1800" max="2025" required>
+                    <span class="field-error" id="YearBuilt-err">Must be between 1800 and 2025</span>
                 </div>
                 <div class="form-group">
                     <label for="GrLivArea">Above Ground Living Area (sq ft)</label>
-                    <input type="number" id="GrLivArea" value="1710" required>
+                    <!-- FIX: Added min="1" — negative/zero area is invalid -->
+                    <input type="number" id="GrLivArea" value="1710" min="1" required>
+                    <span class="field-error" id="GrLivArea-err">Must be a positive number (≥ 1 sq ft)</span>
                 </div>
                 <div class="form-group">
                     <label for="GarageCars">Garage Size (Cars)</label>
                     <input type="number" id="GarageCars" min="0" max="5" value="2" required>
+                    <span class="field-error" id="GarageCars-err">Must be between 0 and 5</span>
                 </div>
             </div>
 
-            <button type="submit" class="btn-predict">Predict House Price</button>
+            <button type="submit" id="predictBtn" class="btn-predict">
+                <span class="spinner" id="spinner"></span>
+                <span id="btnText">Predict House Price</span>
+            </button>
         </form>
+
+        <!-- FIX: Inline error card replaces intrusive alert() -->
+        <div id="errorCard" class="error-card">
+            <p><strong>⚠️ Prediction Failed</strong><span id="errorMsg"></span></p>
+        </div>
 
         <div id="resultCard" class="result-card">
             <div class="result-title">Estimated Market Value</div>
-            <div id="priceDisplay" class="result-price">$0</div>
+            <!-- FIX: Removed "$0" default — the app shows ₹ (INR), not $ -->
+            <div id="priceDisplay" class="result-price"></div>
             <div class="status-badge" id="modelBadge">Model: RandomForestRegressor</div>
         </div>
     </div>
 
     <script>
+        // ── Validation rules ──────────────────────────────────────────
+        const FIELDS = [
+            { id: 'LotArea',     min: 1,    max: null, label: 'Lot Area'          },
+            { id: 'OverallQual', min: 1,    max: 10,   label: 'Overall Quality'   },
+            { id: 'OverallCond', min: 1,    max: 10,   label: 'Overall Condition' },
+            { id: 'YearBuilt',   min: 1800, max: 2025, label: 'Year Built'        },
+            { id: 'GrLivArea',   min: 1,    max: null, label: 'Living Area'       },
+            { id: 'GarageCars',  min: 0,    max: 5,    label: 'Garage Cars'       },
+        ];
+
+        function validateForm() {
+            let valid = true;
+            FIELDS.forEach(({ id, min, max }) => {
+                const el    = document.getElementById(id);
+                const errEl = document.getElementById(`${id}-err`);
+                const value = Number(el.value);
+                const isEmpty = el.value.trim() === '';
+                const tooLow  = min !== null && value < min;
+                const tooHigh = max !== null && value > max;
+
+                if (isEmpty || isNaN(value) || tooLow || tooHigh) {
+                    el.classList.add('invalid');
+                    errEl.classList.add('visible');
+                    valid = false;
+                } else {
+                    el.classList.remove('invalid');
+                    errEl.classList.remove('visible');
+                }
+            });
+            return valid;
+        }
+
+        // Clear invalid state when user edits the field
+        FIELDS.forEach(({ id }) => {
+            document.getElementById(id).addEventListener('input', function () {
+                this.classList.remove('invalid');
+                document.getElementById(`${id}-err`).classList.remove('visible');
+                document.getElementById('errorCard').classList.remove('active');
+            });
+        });
+
+        // ── Currency formatter ─────────────────────────────────────────
         function formatIndianCurrency(amountInINR) {
             const formattedNumber = amountInINR.toLocaleString('en-IN', {
                 maximumFractionDigits: 0
             });
 
-            let words = "";
+            let words = '';
             if (amountInINR >= 10000000) {
                 words = ` (${(amountInINR / 10000000).toFixed(2)} Crore)`;
             } else if (amountInINR >= 100000) {
@@ -225,52 +373,69 @@
             return `₹ ${formattedNumber}${words}`;
         }
 
-        document.getElementById('predictionForm').addEventListener('submit', async function(e) {
+        // ── Form submit ────────────────────────────────────────────────
+        document.getElementById('predictionForm').addEventListener('submit', async function (e) {
             e.preventDefault();
-            
+
+            // Reset previous output
+            document.getElementById('resultCard').classList.remove('active');
+            document.getElementById('errorCard').classList.remove('active');
+
+            // FIX: Client-side validation before sending request
+            if (!validateForm()) return;
+
+            // FIX: All fields sent as int (backend HouseFeatures uses int for all fields)
             const payload = {
-                LotArea: parseFloat(document.getElementById('LotArea').value),
-                OverallQual: parseInt(document.getElementById('OverallQual').value),
-                OverallCond: parseInt(document.getElementById('OverallCond').value),
-                YearBuilt: parseInt(document.getElementById('YearBuilt').value),
-                GrLivArea: parseFloat(document.getElementById('GrLivArea').value),
-                GarageCars: parseInt(document.getElementById('GarageCars').value)
+                LotArea:     parseInt(document.getElementById('LotArea').value,     10),
+                OverallQual: parseInt(document.getElementById('OverallQual').value, 10),
+                OverallCond: parseInt(document.getElementById('OverallCond').value, 10),
+                YearBuilt:   parseInt(document.getElementById('YearBuilt').value,   10),
+                GrLivArea:   parseInt(document.getElementById('GrLivArea').value,   10),
+                GarageCars:  parseInt(document.getElementById('GarageCars').value,  10),
             };
 
-            const btn = document.querySelector('.btn-predict');
-            btn.textContent = 'Calculating...';
+            const btn    = document.getElementById('predictBtn');
+            const btnTxt = document.getElementById('btnText');
+
+            // FIX: Show spinner for visual loading feedback
             btn.disabled = true;
+            btn.classList.add('loading');
+            btnTxt.textContent = 'Calculating...';
 
             try {
                 const response = await fetch('/predict', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify(payload)
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
                     const priceInUSD = Number(data.predicted_price);
-                    // Conversion rate 1 USD ~ 83 INR
+                    // Conversion rate: 1 USD ≈ 83 INR
                     const priceInINR = priceInUSD * 83;
 
-                    const priceDisplay = document.getElementById('priceDisplay');
-                    priceDisplay.textContent = formatIndianCurrency(priceInINR);
-                    
-                    document.getElementById('modelBadge').textContent = `USD: $${priceInUSD.toLocaleString('en-US', {maximumFractionDigits: 0})} | Model: ${data.model || 'RandomForestRegressor'}`;
+                    document.getElementById('priceDisplay').textContent = formatIndianCurrency(priceInINR);
+                    document.getElementById('modelBadge').textContent =
+                        `USD: $${priceInUSD.toLocaleString('en-US', { maximumFractionDigits: 0 })} | Model: ${data.model || 'RandomForestRegressor'}`;
                     document.getElementById('resultCard').classList.add('active');
                 } else {
-                    alert('Prediction error: ' + (data.detail || 'Failed to get prediction'));
+                    // FIX: Inline error card instead of blocking alert()
+                    document.getElementById('errorMsg').textContent =
+                        data.detail || 'Failed to get prediction';
+                    document.getElementById('errorCard').classList.add('active');
                 }
             } catch (err) {
-                alert('Could not connect to Prediction API. Make sure backend service is running!');
+                // FIX: Inline error card for network/connection errors
+                document.getElementById('errorMsg').textContent =
+                    'Could not connect to the Prediction API. Please try again.';
+                document.getElementById('errorCard').classList.add('active');
                 console.error(err);
             } finally {
-                btn.textContent = 'Predict House Price';
                 btn.disabled = false;
+                btn.classList.remove('loading');
+                btnTxt.textContent = 'Predict House Price';
             }
         });
     </script>

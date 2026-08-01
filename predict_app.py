@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import os
 
 # -------------------------------------------------------
@@ -42,34 +42,12 @@ app.add_middleware(
 if os.path.exists("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/")
+# FIX: Single root route — removed the duplicate @app.get("/") that was dead code
+@app.get("/", tags=["Health"])
 def read_root():
+    """Serve the frontend UI."""
     if os.path.exists("static/index.html"):
         return FileResponse("static/index.html")
-    return {"message": "Welcome to House Price Prediction API. Go to /docs for API documentation."}
-
-# -------------------------------------------------------
-# Request & Response Schemas
-# -------------------------------------------------------
-class HouseFeatures(BaseModel):
-    LotArea:     int   = Field(..., example=8450,  description="Lot size in square feet")
-    OverallQual: int   = Field(..., example=7,     description="Overall material quality (1-10)")
-    OverallCond: int   = Field(..., example=5,     description="Overall condition (1-10)")
-    YearBuilt:   int   = Field(..., example=2003,  description="Year the house was built")
-    GrLivArea:   int   = Field(..., example=1710,  description="Above ground living area in sq ft")
-    GarageCars:  int   = Field(..., example=2,     description="Number of cars garage can hold")
-
-class PredictionResponse(BaseModel):
-    predicted_price: float
-    model:           str
-    status:          str
-
-# -------------------------------------------------------
-# Endpoints
-# -------------------------------------------------------
-@app.get("/", tags=["Health"])
-def root():
-    """Root endpoint — confirms API is running."""
     return {
         "message": "House Price Estimator API is running!",
         "docs":    "/docs",
@@ -83,6 +61,56 @@ def health():
     return {"status": "ok", "model_loaded": model is not None}
 
 
+# -------------------------------------------------------
+# Request & Response Schemas
+# -------------------------------------------------------
+class HouseFeatures(BaseModel):
+    LotArea:     int = Field(..., example=8450,  description="Lot size in square feet")
+    OverallQual: int = Field(..., example=7,     description="Overall material quality (1-10)")
+    OverallCond: int = Field(..., example=5,     description="Overall condition (1-10)")
+    YearBuilt:   int = Field(..., example=2003,  description="Year the house was built")
+    GrLivArea:   int = Field(..., example=1710,  description="Above ground living area in sq ft")
+    GarageCars:  int = Field(..., example=2,     description="Number of cars garage can hold")
+
+    # FIX: Server-side validation to reject impossible inputs
+    @field_validator("LotArea", "GrLivArea")
+    @classmethod
+    def must_be_positive(cls, v, info):
+        if v < 1:
+            raise ValueError(f"{info.field_name} must be at least 1 sq ft")
+        return v
+
+    @field_validator("OverallQual", "OverallCond")
+    @classmethod
+    def must_be_1_to_10(cls, v, info):
+        if not (1 <= v <= 10):
+            raise ValueError(f"{info.field_name} must be between 1 and 10")
+        return v
+
+    @field_validator("YearBuilt")
+    @classmethod
+    def must_be_valid_year(cls, v):
+        if not (1800 <= v <= 2025):
+            raise ValueError("YearBuilt must be between 1800 and 2025")
+        return v
+
+    @field_validator("GarageCars")
+    @classmethod
+    def must_be_valid_garage(cls, v):
+        if not (0 <= v <= 5):
+            raise ValueError("GarageCars must be between 0 and 5")
+        return v
+
+
+class PredictionResponse(BaseModel):
+    predicted_price: float
+    model:           str
+    status:          str
+
+
+# -------------------------------------------------------
+# Endpoints
+# -------------------------------------------------------
 @app.post("/predict", response_model=PredictionResponse, tags=["Prediction"])
 def predict(features: HouseFeatures):
     """
