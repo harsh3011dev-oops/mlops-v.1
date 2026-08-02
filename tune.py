@@ -41,8 +41,11 @@ def run_tuning(n_trials: int = 10, data_path: str = "data/house_prices.csv"):
     try:
         mlflow.set_tracking_uri(tracking_uri)
         mlflow.set_experiment("House Price - Hyperparameter Tuning")
+        print(f"[+] MLflow tracking server connected at {tracking_uri}")
     except Exception as e:
-        print(f"[!] Warning: Could not connect to remote MLflow tracking URI ({tracking_uri}). Using local mlruns.")
+        print(f"[!] MLflow server unreachable ({e.__class__.__name__}). Falling back to local mlruns/")
+        mlflow.set_tracking_uri("file:./mlruns")
+        mlflow.set_experiment("House Price - Hyperparameter Tuning")
 
     with mlflow.start_run(run_name="Optuna_Study_Parent"):
         study = optuna.create_study(direction="maximize")

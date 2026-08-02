@@ -9,14 +9,20 @@ on:
 jobs:
   test-and-train:
     runs-on: ubuntu-latest
+
+    env:
+      # Use local file-based MLflow tracking in CI (no server needed)
+      MLFLOW_TRACKING_URI: "file:./mlruns"
+
     steps:
       - name: Checkout Code Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
+          cache: 'pip'
 
       - name: Install Dependencies
         run: |
@@ -25,7 +31,7 @@ jobs:
 
       - name: Run Pytest Unit & Integration Tests
         run: |
-          pytest tests/ -v
+          python -m pytest tests/ -v
 
       - name: Run Model Training & Artifact Generation
         run: |
@@ -34,5 +40,5 @@ jobs:
       - name: Verify API Build & FastAPI Health Check
         run: |
           uvicorn predict_app:app --host 0.0.0.0 --port 8000 &
-          sleep 3
-          curl --fail http://localhost:8000/health || exit 1
+          sleep 5
+          curl --fail --retry 3 --retry-delay 2 http://localhost:8000/health

@@ -14,14 +14,16 @@ def main():
     df = load_data(data_path)
     X_train, X_test, y_train, y_test = split_data(df, test_size=0.2, random_state=42)
 
-    # 2. MLflow Tracking Setup
+    # 2. MLflow Tracking Setup — falls back to local ./mlruns if server is down
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
     try:
         mlflow.set_tracking_uri(tracking_uri)
+        mlflow.set_experiment("House Price Prediction - Production")
+        print(f"[+] MLflow tracking server connected at {tracking_uri}")
     except Exception as e:
-        print(f"[!] Tracking server unreachable at {tracking_uri}, logging locally.")
-    
-    mlflow.set_experiment("House Price Prediction - Production")
+        print(f"[!] MLflow server unreachable ({e.__class__.__name__}). Falling back to local mlruns/")
+        mlflow.set_tracking_uri("file:./mlruns")
+        mlflow.set_experiment("House Price Prediction - Production")
 
     # 3. Model Parameters
     ESTIMATORS = 200
