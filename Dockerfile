@@ -3,7 +3,7 @@
 # Install all dependencies in a separate stage to keep the
 # final image small and clean (industry best practice)
 # =============================================================
-FROM python:3.11.15-slim AS builder
+FROM python:3.11-slim AS builder
 
 # Set working directory
 WORKDIR /app
@@ -28,17 +28,20 @@ RUN pip install --upgrade pip && \
 # Stage 2: Final Runtime Image
 # Minimal, secure, production-ready image
 # =============================================================
-FROM python:3.11.15-slim AS runtime
+FROM python:3.11-slim AS runtime
 
 # Labels — industry standard metadata
-LABEL maintainer="harsh"
+LABEL maintainer="harsh3011dev"
 LABEL project="house-price-mlops"
-LABEL version="2.0"
+LABEL version="5.0"
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    MLFLOW_TRACKING_URI=sqlite:///mlflow-data/mlflow.db
+    # MLflow 3.x: Use SQLite backend (no server required in container)
+    MLFLOW_TRACKING_URI=sqlite:///mlflow-data/mlflow.db \
+    # Ensure Python finds our src/ module
+    PYTHONPATH=/app
 
 # Create a non-root user for security (never run containers as root)
 RUN useradd --create-home --shell /bin/bash mlops_user
@@ -49,18 +52,30 @@ WORKDIR /app
 # Copy installed Python packages from builder stage
 COPY --from=builder /install /usr/local
 
-# Copy project source files
+# -------------------------------------------
+# Copy all application source files
+# -------------------------------------------
+
+# Core application scripts
 COPY train.py .
-COPY train-traces.py .
 COPY predict_app.py .
-COPY static ./static/
+
+# Modular source package (CRITICAL: required for pipeline to run)
+COPY src/ ./src/
+
+# Web UI frontend
+COPY static/ ./static/
+
+# Training dataset
 COPY data/ ./data/
 
-# Copy trained model (must run train.py first to generate this)
+# Trained model artifact (must run train.py locally first to generate)
 COPY model/ ./model/
 
-# Create MLflow data directory and give ownership to the non-root user
-RUN mkdir -p /app/mlflow-data && \
+# -------------------------------------------
+# Create runtime directories and set ownership
+# -------------------------------------------
+RUN mkdir -p /app/mlflow-data /app/artifacts && \
     chown -R mlops_user:mlops_user /app
 
 # Switch to non-root user
@@ -69,5 +84,9 @@ USER mlops_user
 # Expose FastAPI port
 EXPOSE 8000
 
+# Health check — Docker daemon restarts container if this fails
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
 # Default command: Run the FastAPI prediction server
-CMD ["uvicorn", "predict_app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "predict_app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

@@ -20,18 +20,15 @@ env/
 mlruns/
 mlflow.db
 
+# Plot & training output artifacts
+artifacts/
+
 # Trained model binary (regenerated via train.py)
 model/model.pkl
-
-# Data (too large for GitHub — use DVC or cloud storage)
-data/
 
 # Environment
 .python-version
 *.env
-
-# Docker
-.dockerignore
 
 # Editor / OS
 .DS_Store

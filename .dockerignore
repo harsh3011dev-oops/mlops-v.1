@@ -1,0 +1,42 @@
+# Git internals
+.git
+.gitignore
+
+# Python virtual environment (NEVER copy into Docker)
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Python version manager
+.python-version
+
+# MLflow local data (created fresh inside container at runtime)
+mlflow.db
+mlruns/
+mlflow-data/
+artifacts/
+
+# Editor / IDE files
+.vscode/
+.idea/
+*.code-workspace
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Test files (not needed in production image)
+tests/
+.pytest_cache/
+
+# GitHub Actions (not needed in image)
+.github/
+
+# Logs
+*.log
+
+# NOTE: src/ is intentionally NOT excluded — it is required for the pipeline to run

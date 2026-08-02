@@ -4,9 +4,9 @@ metadata:
   name: houseprice-predict
   labels:
     app: houseprice-predict
-    version: v2
+    version: v5
 spec:
-  replicas: 1
+  replicas: 2                         # Run 2 replicas for high availability
   selector:
     matchLabels:
       app: houseprice-predict
@@ -14,31 +14,39 @@ spec:
     metadata:
       labels:
         app: houseprice-predict
-        version: v2
+        version: v5
     spec:
       containers:
         - name: houseprice-predict
-          image: houseprice-estimator:v2
-          imagePullPolicy: Never        # Use local image loaded into Kind
+          image: houseprice-estimator:v5
+          imagePullPolicy: Never        # Use local image loaded into Kind cluster
           ports:
             - containerPort: 8000
           env:
             - name: MODEL_PATH
               value: "model/model.pkl"
-          # Liveness probe — restart pod if app crashes
+            # MLflow 3.x: Use SQLite inside container — no external server needed
+            - name: MLFLOW_TRACKING_URI
+              value: "sqlite:///mlflow-data/mlflow.db"
+            # Ensure Python resolves src/ module correctly
+            - name: PYTHONPATH
+              value: "/app"
+          # Liveness probe — restart pod if app hangs or crashes
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 10
-            periodSeconds: 15
-          # Readiness probe — only send traffic when app is ready
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          # Readiness probe — only route traffic when app is fully ready
           readinessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 10
+            failureThreshold: 3
           resources:
             requests:
               memory: "256Mi"
