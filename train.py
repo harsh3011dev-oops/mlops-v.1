@@ -1,75 +1,78 @@
-import pandas as pd
+import os
+import joblib
 import mlflow
 import mlflow.sklearn
-import joblib
-import os
+from src.data_loader import load_data, split_data
+from src.model_pipeline import create_pipeline
+from src.evaluate import evaluate_model, plot_residuals
 
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error, r2_score
+def main():
+    print("[+] Starting End-to-End Production Model Training...")
+    
+    # 1. Load & Split Data
+    data_path = "data/house_prices.csv"
+    df = load_data(data_path)
+    X_train, X_test, y_train, y_test = split_data(df, test_size=0.2, random_state=42)
 
-# Load CSV
-df = pd.read_csv("data/house_prices.csv")
+    # 2. MLflow Tracking Setup
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
+    try:
+        mlflow.set_tracking_uri(tracking_uri)
+    except Exception as e:
+        print(f"[!] Tracking server unreachable at {tracking_uri}, logging locally.")
+    
+    mlflow.set_experiment("House Price Prediction - Production")
 
-# Features
-X = df.drop("SalePrice", axis=1)
-
-# Target
-y = df["SalePrice"]
-
-# Split data
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.2,
-    random_state=42
-)
-
-# Set MLflow Tracking Server URI (PostgreSQL backend)
-mlflow.set_tracking_uri("http://127.0.0.1:5000")
-
-# Create Experiment
-mlflow.set_experiment("House Price Prediction")
-
-with mlflow.start_run():
-
+    # 3. Model Parameters
     ESTIMATORS = 200
     DEPTH = 20
-    RANDOM_STATE = 50
+    MIN_SAMPLES = 2
+    RANDOM_STATE = 42
 
-    model = RandomForestRegressor(
-        n_estimators=ESTIMATORS,
-        max_depth=DEPTH,
-        random_state=RANDOM_STATE
-)
+    with mlflow.start_run(run_name="Production_RandomForest_Pipeline") as run:
+        # Build & Fit Pipeline
+        pipeline = create_pipeline(
+            n_estimators=ESTIMATORS,
+            max_depth=DEPTH,
+            min_samples_split=MIN_SAMPLES,
+            random_state=RANDOM_STATE
+        )
+        pipeline.fit(X_train, y_train)
 
-    model.fit(X_train, y_train)
+        # Predict & Evaluate
+        predictions = pipeline.predict(X_test)
+        metrics = evaluate_model(y_test, predictions)
 
-    prediction = model.predict(X_test)
+        # Log Parameters & Metrics
+        mlflow.log_param("n_estimators", ESTIMATORS)
+        mlflow.log_param("max_depth", DEPTH)
+        mlflow.log_param("min_samples_split", MIN_SAMPLES)
+        mlflow.log_param("random_state", RANDOM_STATE)
 
-    mse = mean_squared_error(y_test, prediction)
-    r2 = r2_score(y_test, prediction)
+        for metric_name, metric_val in metrics.items():
+            mlflow.log_metric(metric_name, metric_val)
 
-    # Log Parameters
-    mlflow.log_param("n_estimators", ESTIMATORS)
-    mlflow.log_param("max_depth", DEPTH)
-    mlflow.log_param("random_state", RANDOM_STATE)
+        # Plot Residuals & Log Artifact
+        res_plot_path = plot_residuals(y_test, predictions)
+        mlflow.log_artifact(res_plot_path, artifact_path="plots")
 
-    # Log Metrics
-    mlflow.log_metric("MSE", mse)
-    mlflow.log_metric("R2", r2)
+        # Save & Register Model in MLflow Registry
+        try:
+            mlflow.sklearn.log_model(
+                sk_model=pipeline,
+                artifact_path="house_model",
+                registered_model_name="HousePricePredictor"
+            )
+        except Exception as reg_err:
+            print(f"[!] Warning: Model registry skipped or unavailable ({reg_err})")
 
-    # Save Model to MLflow
-    mlflow.sklearn.log_model(
-        sk_model=model,
-        name="house_model"
-    )
+        # Export for Local FastAPI Serving
+        os.makedirs("model", exist_ok=True)
+        joblib.dump(pipeline, "model/model.pkl")
+        print("[+] Production Model Pipeline successfully saved to model/model.pkl")
 
-    # Save Model as pickle for FastAPI serving
-    os.makedirs("model", exist_ok=True)
-    joblib.dump(model, "model/model.pkl")
-    print("Model saved to model/model.pkl")
+        print(f"[*] Training Metrics: R2 = {metrics['R2']:.4f} | RMSE = {metrics['RMSE']:.2f} | MAE = {metrics['MAE']:.2f}")
+        print("[+] Training & Registration Complete!")
 
-    print("Training Completed")
-    print("MSE :", mse)
-    print("R2  :", r2)
+if __name__ == "__main__":
+    main()
