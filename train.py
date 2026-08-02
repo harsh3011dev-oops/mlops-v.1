@@ -64,7 +64,9 @@ def main():
             mlflow.sklearn.log_model(
                 sk_model=pipeline,
                 artifact_path="house_model",
-                registered_model_name="HousePricePredictor"
+                registered_model_name="HousePricePredictor",
+                # MLflow 3.x requires explicitly trusting custom sklearn transformers
+                skops_trusted_types=["src.features.FeatureEngineer"]
             )
         except Exception as reg_err:
             print(f"[!] Warning: Model registry skipped or unavailable ({reg_err})")
