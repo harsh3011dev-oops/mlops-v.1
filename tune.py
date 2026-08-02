@@ -32,7 +32,7 @@ def objective(trial, X_train, X_test, y_train, y_test):
 
     return metrics["R2"]
 
-def run_tuning(n_trials: int = 10, data_path: str = "data/house_prices.csv"):
+def run_tuning(n_trials: int = 10, data_path: str = "data/train.csv"):
     print(f"[+] Starting Optuna Hyperparameter Optimization ({n_trials} trials)...")
     df = load_data(data_path)
     X_train, X_test, y_train, y_test = split_data(df)

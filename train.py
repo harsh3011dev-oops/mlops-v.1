@@ -9,8 +9,8 @@ from src.evaluate import evaluate_model, plot_residuals
 def main():
     print("[+] Starting End-to-End Production Model Training...")
     
-    # 1. Load & Split Data
-    data_path = "data/house_prices.csv"
+    # 1. Load & Split Data (Ames Housing Dataset: data/train.csv)
+    data_path = "data/train.csv"
     df = load_data(data_path)
     X_train, X_test, y_train, y_test = split_data(df, test_size=0.2, random_state=42)
 
