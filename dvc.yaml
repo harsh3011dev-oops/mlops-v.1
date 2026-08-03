@@ -1,0 +1,21 @@
+stages:
+  train:
+    cmd: python train.py
+    deps:
+      - data/train.csv
+      - src/data_loader.py
+      - src/features.py
+      - src/model_pipeline.py
+      - train.py
+    outs:
+      - model/model.pkl
+
+  drift_report:
+    cmd: python generate_drift_report.py
+    deps:
+      - data/train.csv
+      - model/model.pkl
+      - src/drift_monitor.py
+      - generate_drift_report.py
+    outs:
+      - artifacts/drift_report.html

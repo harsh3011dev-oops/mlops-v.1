@@ -35,3 +35,7 @@ model/model.pkl
 .idea/
 .vscode/
 *.swp
+
+# DVC
+.dvc/cache
+.dvc/tmp

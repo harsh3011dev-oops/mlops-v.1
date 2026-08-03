@@ -8,15 +8,10 @@ on:
 
 jobs:
   # ─────────────────────────────────────────────────
-  # Job 1: Test, Train & Validate API
+  # Job 1: Code Quality & Linting
   # ─────────────────────────────────────────────────
-  test-and-train:
+  lint:
     runs-on: ubuntu-latest
-
-    env:
-      # MLflow 3.x: SQLite backend — no server needed in CI
-      MLFLOW_TRACKING_URI: "sqlite:///mlflow.db"
-      PYTHONPATH: "."
 
     steps:
       - name: Checkout Code Repository
@@ -26,6 +21,42 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+
+      - name: Run Flake8 Code Linting
+        run: |
+          # Stop build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv,.venv,.git
+          # Exit-zero treats all errors as warnings (max-line-length 127)
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics --exclude=venv,.venv,.git
+
+  # ─────────────────────────────────────────────────
+  # Job 2: Test, Train & Validate API across Python Matrix
+  # ─────────────────────────────────────────────────
+  test-and-train:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11']
+
+    env:
+      MLFLOW_TRACKING_URI: "sqlite:///mlflow.db"
+      PYTHONPATH: "."
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
       - name: Install Dependencies
@@ -48,18 +79,17 @@ jobs:
           curl --fail --retry 3 --retry-delay 2 http://localhost:8000/health
 
   # ─────────────────────────────────────────────────
-  # Job 2: Build & Validate Docker Image
-  # Runs only after test-and-train passes
+  # Job 3: Build, Smoke-Test & Optionally Push Docker Image
   # ─────────────────────────────────────────────────
   docker-build:
     runs-on: ubuntu-latest
-    needs: test-and-train          # Only runs if Job 1 passes
+    needs: test-and-train
 
     steps:
       - name: Checkout Code Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11 (to run train.py for model artifact)
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -70,17 +100,30 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Generate Model Artifact (required by Docker COPY model/)
+      - name: Generate Model Artifact
         run: |
           MLFLOW_TRACKING_URI=sqlite:///mlflow.db PYTHONPATH=. python train.py
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub (Conditional)
+        if: ${{ env.DOCKER_USER != '' && env.DOCKER_PASS != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+        env:
+          DOCKER_USER: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASS: ${{ secrets.DOCKER_PASSWORD }}
+
       - name: Build Docker Image
         run: |
-          docker build -t houseprice-estimator:v5 .
+          docker build -t houseprice-estimator:latest -t houseprice-estimator:v5 .
 
       - name: Smoke Test Docker Container
         run: |
-          docker run -d --name test-container -p 8000:8000 houseprice-estimator:v5
+          docker run -d --name test-container -p 8000:8000 houseprice-estimator:latest
           sleep 10
           curl --fail --retry 5 --retry-delay 3 http://localhost:8000/health
           docker stop test-container

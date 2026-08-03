@@ -18,7 +18,10 @@ Open the deployed app here: https://houseprice-estimator-v5.onrender.com/
 | **API Server** | FastAPI + Uvicorn |
 | **Frontend UI** | HTML/CSS/JS (Indian Rupee ₹ currency support) |
 | **Containerization** | Docker (multi-stage build) |
-| **Orchestration** | Kubernetes (Kind cluster) |
+| **Orchestration** | Kubernetes (Kind cluster) & Helm Chart (`helm/houseprice-estimator/`) |
+| **CI/CD Pipeline** | GitHub Actions (Linting, Testing, Matrix Build, Docker Smoke Test) |
+| **Monitoring & Drift** | Prometheus Metrics (`/metrics`) + Kolmogorov-Smirnov & Wasserstein Drift Analytics |
+| **Data Versioning** | DVC (`dvc.yaml` reproducibility pipeline) |
 | **Database** | PostgreSQL 16 (MLflow metadata backend) |
 
 ---

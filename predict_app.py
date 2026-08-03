@@ -1,16 +1,46 @@
 import os
+import time
 import joblib
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
+try:
+    from prometheus_client import Counter, Histogram, Summary, Gauge, generate_latest, CONTENT_TYPE_LATEST
+    PROMETHEUS_AVAILABLE = True
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
+
 app = FastAPI(
     title="House Price Estimator API",
-    description="Production MLOps API for Ames Housing Price Prediction",
-    version="2.0.0"
+    description="Production MLOps API for Ames Housing Price Prediction with Prometheus Monitoring & Data Drift Analytics",
+    version="2.1.0"
 )
+
+# Prometheus Metrics Definitions (if available)
+if PROMETHEUS_AVAILABLE:
+    PREDICTION_COUNTER = Counter(
+        "house_price_prediction_requests_total",
+        "Total number of prediction requests served",
+        ["status"]
+    )
+
+    LATENCY_HISTOGRAM = Histogram(
+        "house_price_prediction_latency_seconds",
+        "Inference latency in seconds for house price predictions"
+    )
+
+    PRICE_SUMMARY = Summary(
+        "house_price_prediction_price_usd",
+        "Summary distribution of predicted house prices in USD"
+    )
+
+    DATA_DRIFT_GAUGE = Gauge(
+        "house_price_data_drift_status",
+        "Status of data drift detection (1 = drift detected, 0 = no drift)"
+    )
 
 # Serve static HTML/JS frontend
 if os.path.exists("static"):
@@ -69,6 +99,13 @@ def health_check():
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "unhealthy", "error": str(e)})
 
+@app.get("/metrics")
+def metrics():
+    """Exposes Prometheus scrape metrics."""
+    if not PROMETHEUS_AVAILABLE:
+        return JSONResponse(status_code=501, content={"error": "prometheus-client is not installed"})
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 @app.get("/info")
 def model_info():
     return {
@@ -83,6 +120,7 @@ def model_info():
 
 @app.post("/predict", response_model=PredictionOutput)
 def predict_price(input_data: HouseInput):
+    start_time = time.time()
     try:
         pipeline = get_model()
 
@@ -93,6 +131,13 @@ def predict_price(input_data: HouseInput):
         prediction_inr = prediction_usd * 83.0  # 1 USD ≈ 83 INR
         price_lakhs = round(prediction_inr / 100000.0, 2)
 
+        # Update Prometheus metrics if available
+        if PROMETHEUS_AVAILABLE:
+            elapsed = time.time() - start_time
+            LATENCY_HISTOGRAM.observe(elapsed)
+            PRICE_SUMMARY.observe(prediction_usd)
+            PREDICTION_COUNTER.labels(status="success").inc()
+
         return PredictionOutput(
             predicted_price=round(float(prediction_usd), 2),
             predicted_price_inr=round(float(prediction_inr), 2),
@@ -100,6 +145,10 @@ def predict_price(input_data: HouseInput):
         )
 
     except FileNotFoundError as fnf:
+        if PROMETHEUS_AVAILABLE:
+            PREDICTION_COUNTER.labels(status="error_model_not_found").inc()
         raise HTTPException(status_code=503, detail=str(fnf))
     except Exception as e:
+        if PROMETHEUS_AVAILABLE:
+            PREDICTION_COUNTER.labels(status="error_inference").inc()
         raise HTTPException(status_code=500, detail=f"Inference error: {str(e)}")

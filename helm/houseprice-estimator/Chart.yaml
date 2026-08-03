@@ -1,0 +1,11 @@
+apiVersion: v2
+name: houseprice-estimator
+description: A Helm chart for deploying the House Price MLOps FastAPI prediction service on Kubernetes
+type: application
+version: 1.0.0
+appVersion: "2.1.0"
+keywords:
+  - mlops
+  - fastapi
+  - machine-learning
+  - house-price

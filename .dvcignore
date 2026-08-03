@@ -1,0 +1,9 @@
+# DVC ignore rules
+venv/
+.venv/
+__pycache__/
+*.pyc
+.git/
+.pytest_cache/
+mlruns/
+mlflow.db
